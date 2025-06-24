@@ -38,6 +38,11 @@ A full-stack web application that allows users to upload files and compress them
 
 ---
 
+🌐 **Live Demo**
+
+- **Frontend:** [https://data-compression-decompression.vercel.app/](https://data-compression-decompression.vercel.app/)
+- **Backend:** [https://data-compression-decompression-backend.vercel.app/](https://data-compression-decompression-backend.vercel.app/)
+
 ## 📦 Installation & Setup
 
 ### 1. Clone the Repository
@@ -76,10 +81,3 @@ Click "Compress".
 
 Download the processed file and view compression stats.
 
-## 🧪 Supported Algorithms
-
-| Algorithm | File Types     | Notes                     |
-|-----------|----------------|---------------------------|
-| Huffman   | `.txt`, `.jpg` | Lossless                  |
-| RLE       | `.txt`, `.bmp` | Best for repeating data   |
-| LZ77      | `.txt`         | Sliding window compression|
