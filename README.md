@@ -43,8 +43,8 @@ A full-stack web application that allows users to upload files and compress them
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/data-compression-portal.git
-cd data-compression-portal
+git clone https://github.com/skmachra/Data-Compression-Decompression-Portal.git
+cd Data-Compression-Decompression-Portal
 ```
 
 ## 2. Backend Setup
