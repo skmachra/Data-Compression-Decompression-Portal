@@ -16,7 +16,7 @@ export default function UploadForm({ onResponse }) {
     const endpoint = mode === "compress" ? "compress" : "decompress";
 
     try {
-      const res = await fetch(`http://localhost:5000/${endpoint}`, {
+      const res = await fetch(`https://data-compression-decompression-backend.vercel.app/${endpoint}`, {
         method: "POST",
         body: formData,
       });

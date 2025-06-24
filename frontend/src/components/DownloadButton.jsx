@@ -2,7 +2,7 @@ export default function DownloadButton({ filename }) {
   if (!filename) return null;
 
   const handleDownload = () => {
-    window.open(`http://localhost:5000/download/${filename}`, "_blank");
+    window.open(`https://data-compression-decompression-backend.vercel.app/download/${filename}`, "_blank");
   };
 
   return (
