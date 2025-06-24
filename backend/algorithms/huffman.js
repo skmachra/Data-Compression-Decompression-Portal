@@ -40,6 +40,13 @@ function buildCodes(node, prefix = '', codeMap = {}) {
   buildCodes(node.right, prefix + '1', codeMap);
   return codeMap;
 }
+function buildFrequencyMapRaw(data) {
+  const freq = new Array(256).fill(0);
+  for (let byte of data) {
+    freq[byte]++;
+  }
+  return freq;
+}
 
 function compressHuffman(inputPath, outputPath) {
   const input = fs.readFileSync(inputPath, 'utf-8');
@@ -89,7 +96,84 @@ function decompressHuffman(inputPath, outputPath) {
   };
 }
 
+// ====== BINARY COMPRESSION ====== //
+
+function compressHuffmanRaw(inputPath, outputPath) {
+  const input = fs.readFileSync(inputPath);
+  const freqMap = buildFrequencyMapRaw(input);
+  const tree = buildTree(freqMap);
+  const codeMap = buildCodes(tree);
+
+  let encoded = '';
+  for (let byte of input) {
+    encoded += codeMap[byte];
+  }
+
+  const padding = (8 - (encoded.length % 8)) % 8;
+  encoded += '0'.repeat(padding);
+
+  const bytes = [];
+  for (let i = 0; i < encoded.length; i += 8) {
+    bytes.push(parseInt(encoded.slice(i, i + 8), 2));
+  }
+
+  // Single object containing all necessary info
+  const payload = {
+    codes: codeMap,
+    padding,
+    data: bytes,
+  };
+
+  fs.writeFileSync(outputPath, JSON.stringify(payload)); // all in one file!
+
+  return {
+    originalSize: input.length,
+    compressedSize: Buffer.byteLength(JSON.stringify(payload)),
+  };
+}
+
+
+
+
+// ====== BINARY DECOMPRESSION ====== //
+
+function decompressHuffmanRaw(inputPath, outputPath) {
+  const input = JSON.parse(fs.readFileSync(inputPath, 'utf-8'));
+  const { codes, data, padding } = input;
+
+  let binary = '';
+  for (let byte of data) {
+    binary += byte.toString(2).padStart(8, '0');
+  }
+
+  if (padding > 0) binary = binary.slice(0, -padding);
+
+  const reverseMap = Object.entries(codes).reduce((acc, [k, v]) => {
+    acc[v] = parseInt(k);
+    return acc;
+  }, {});
+
+  const decodedBytes = [];
+  let current = '';
+  for (let bit of binary) {
+    current += bit;
+    if (reverseMap[current] !== undefined) {
+      decodedBytes.push(reverseMap[current]);
+      current = '';
+    }
+  }
+
+  fs.writeFileSync(outputPath, Buffer.from(decodedBytes));
+  return {
+    decompressedSize: decodedBytes.length,
+  };
+}
+
+
+
 module.exports = {
   compressHuffman,
   decompressHuffman,
+  compressHuffmanRaw,
+  decompressHuffmanRaw,
 };

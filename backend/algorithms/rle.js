@@ -39,7 +39,53 @@ function decompressRLE(inputPath, outputPath) {
   };
 }
 
+
+function compressRLERaw(inputPath, outputPath) {
+  const input = fs.readFileSync(inputPath);
+  const output = [];
+  let count = 1;
+  let currentByte = input[0];
+
+  for (let i = 1; i < input.length; i++) {
+    if (input[i] === currentByte && count < 255) {
+      count++;
+    } else {
+      output.push(count, currentByte);
+      currentByte = input[i];
+      count = 1;
+    }
+  }
+  // Add the last run
+  output.push(count, currentByte);
+
+  fs.writeFileSync(outputPath, Buffer.from(output));
+  return {
+    originalSize: input.length,
+    compressedSize: output.length,
+  };
+}
+
+function decompressRLERaw(inputPath, outputPath) {
+  const input = fs.readFileSync(inputPath);
+  const output = [];
+
+  for (let i = 0; i < input.length; i += 2) {
+    const count = input[i];
+    const byte = input[i + 1];
+    for (let j = 0; j < count; j++) {
+      output.push(byte);
+    }
+  }
+
+  fs.writeFileSync(outputPath, Buffer.from(output));
+  return {
+    decompressedSize: output.length,
+  };
+}
+
 module.exports = {
   compressRLE,
   decompressRLE,
+  compressRLERaw,
+  decompressRLERaw,
 };

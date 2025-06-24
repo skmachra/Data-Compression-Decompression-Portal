@@ -1,11 +1,9 @@
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
-const { compressRLE, decompressRLE } = require('./algorithms/rle');
-const { compressHuffman, decompressHuffman } = require('./algorithms/huffman');
-const { compressLZ77, decompressLZ77 } = require('./algorithms/lz77');
-const { compressImage } = require('./algorithms/compressImage'); // Assuming you have an image compression algorithm
-const { compressVideo } = require('./algorithms/compressVideo'); // Assuming you have a video compression algorithm
+const { compressRLE, decompressRLE, compressRLERaw, decompressRLERaw } = require('./algorithms/rle');
+const { compressHuffman, decompressHuffman, compressHuffmanRaw, decompressHuffmanRaw } = require('./algorithms/huffman');
+const { compressLZ77, decompressLZ77, compressLZ77Raw, decompressLZ77Raw } = require('./algorithms/lz77');
 
 const path = require('path');
 const fs = require('fs');
@@ -50,52 +48,64 @@ app.post('/upload', upload.single('file'), (req, res) => {
 });
 
 // POST /compress
+// Modify your compression route to handle images
 app.post('/compress', upload.single('file'), async (req, res) => {
   const algorithm = req.body.algorithm;
   const file = req.file;
 
   if (!file || !algorithm) {
-    return res.status(400).json({ error: 'File or algorithm not provided' });
+    return res.status(400).json({ error: '❗ File or algorithm not provided' });
   }
 
-  const ext = path.extname(file.originalname);
+  const ext = path.extname(file.originalname).toLowerCase();
   const base = path.basename(file.originalname, ext);
   const inputPath = path.join(__dirname, 'uploads', file.filename);
   const outputPath = path.join(__dirname, 'uploads', `compressed-${base}${ext}`);
 
   try {
+    // Validate extension
+    const isText = ['.txt', '.json', '.csv', '.xml', '.bin'].includes(ext);
+    const isImage = ['.png', '.jpg', '.jpeg', '.bmp', '.gif'].includes(ext);
+
+    if (!isText && !isImage) {
+      return res.status(400).json({ error: '❌ Unsupported file type for compression' });
+    }
+
+    // Ensure file exists
+    if (!fs.existsSync(inputPath)) {
+      return res.status(404).json({ error: '❌ Uploaded file not found' });
+    }
+
     let stats = {
       originalSize: fs.statSync(inputPath).size,
       compressedSize: 0,
     };
 
-    if (['.txt', '.json', '.csv'].includes(ext)) {
-      // TEXT compression
+    // 🔹 Handle text files
+    if (isText) {
       if (algorithm === 'rle') compressRLE(inputPath, outputPath);
       else if (algorithm === 'huffman') compressHuffman(inputPath, outputPath);
       else if (algorithm === 'lz77') compressLZ77(inputPath, outputPath);
-      else return res.status(400).json({ error: 'Unsupported algorithm for text file' });
+      else return res.status(400).json({ error: '❌ Unsupported algorithm for text file' });
+    }
 
-    } else if (['.jpg', '.jpeg', '.png'].includes(ext)) {
-      // IMAGE compression
-      if (algorithm !== 'sharp') return res.status(400).json({ error: 'Unsupported image algorithm' });
-      const temp = await compressImage(inputPath); // returns new path
-      fs.renameSync(temp, outputPath);
+    // 🔹 Handle image files
+    else if (isImage) {
+      if (algorithm === 'rle') compressRLERaw(inputPath, outputPath);
+      else if (algorithm === 'huffman') compressHuffmanRaw(inputPath, outputPath);
+      else if (algorithm === 'lz77') compressLZ77Raw(inputPath, outputPath);
+      else return res.status(400).json({ error: '❌ Unsupported algorithm for image file' });
+    }
 
-    } else if (['.mp4', '.mov', '.webm'].includes(ext)) {
-      // VIDEO compression
-      if (algorithm !== 'ffmpeg') return res.status(400).json({ error: 'Unsupported video algorithm' });
-      const temp = await compressVideo({ inputPath });
-      fs.renameSync(temp, outputPath);
-
-    } else {
-      return res.status(400).json({ error: 'Unsupported file type' });
+    // Ensure output file is created
+    if (!fs.existsSync(outputPath)) {
+      return res.status(500).json({ error: '❌ Compression failed: No output file generated' });
     }
 
     stats.compressedSize = fs.statSync(outputPath).size;
 
     res.json({
-      message: `File compressed with ${algorithm}`,
+      message: `✅ File compressed using ${algorithm}`,
       algorithm,
       originalSize: stats.originalSize,
       compressedSize: stats.compressedSize,
@@ -105,34 +115,11 @@ app.post('/compress', upload.single('file'), async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Compression error:', err);
-    res.status(500).json({ error: 'Compression failed' });
-  }
-});
-
-app.post("/compress-image", upload.single("file"), async (req, res) => {
-  const file = req.file;
-  if (!file) {
-    return res.status(400).json({ error: "No file uploaded" });
-  }
-
-  const ext = path.extname(file.originalname);
-  const targetPath = path.join("uploads", file.originalname);
-
-  // Rename to original file name (with correct extension)
-  fs.renameSync(file.path, targetPath);
-
-  try {
-    await compressImage(targetPath);
-
-    res.download(targetPath, file.originalname, (err) => {
-      if (err) console.error("Download error:", err);
-      // Optional cleanup:
-      // fs.unlinkSync(targetPath);
+    console.error('❌ Compression error:', err);
+    res.status(500).json({
+      error: '❌ Compression failed (internal server error)',
+      details: err.message
     });
-  } catch (err) {
-    console.error("Compression error:", err);
-    res.status(500).json({ error: "Compression failed" });
   }
 });
 
@@ -143,42 +130,63 @@ app.post('/decompress', upload.single('file'), (req, res) => {
   const file = req.file;
 
   if (!file || !algorithm) {
-    return res.status(400).json({ error: 'File or algorithm not provided' });
+    return res.status(400).json({ error: '❗ File or algorithm not provided' });
   }
 
+  const ext = path.extname(file.originalname).toLowerCase();
   const inputPath = path.join(__dirname, 'uploads', file.filename);
-  const outputFilename = 'decompressed-' + file.filename;
+  const outputFilename = 'decompressed-' + file.originalname;
   const outputPath = path.join(__dirname, 'uploads', outputFilename);
 
   try {
     let stats;
-    if (algorithm === 'rle') {
-      stats = decompressRLE(inputPath, outputPath);
-    } else if (algorithm === 'huffman') {
-  stats = decompressHuffman(inputPath, outputPath);
-}
-    else if (algorithm === 'lz77') {
-  stats = decompressLZ77(inputPath, outputPath);
-}
-    else {
-      return res.status(400).json({ error: 'Unsupported algorithm' });
+    const isImage = ['.png', '.jpg', '.jpeg', '.bmp', '.gif'].includes(ext);
+    const isText = ['.txt', '.json', '.csv', '.xml', '.bin'].includes(ext);
+
+    if (!isText && !isImage) {
+      return res.status(400).json({ error: '❌ Unsupported file type for decompression' });
     }
 
-    const processingTime = Math.random().toFixed(3);
+    // Decompression logic
+    if (algorithm === 'rle') {
+      stats = isImage ? decompressRLERaw(inputPath, outputPath) 
+                      : decompressRLE(inputPath, outputPath);
+    } 
+    else if (algorithm === 'huffman') {
+      stats = isImage ? decompressHuffmanRaw(inputPath, outputPath)
+                      : decompressHuffman(inputPath, outputPath);
+    } 
+    else if (algorithm === 'lz77') {
+      stats = isImage ? decompressLZ77Raw(inputPath, outputPath)
+                      : decompressLZ77(inputPath, outputPath);
+    } 
+    else {
+      return res.status(400).json({ error: `❌ Unsupported algorithm '${algorithm}'` });
+    }
+
+    // If no decompressedSize returned, treat as fail
+    if (!stats || !stats.decompressedSize) {
+      return res.status(500).json({ error: '❌ Decompression failed or invalid file format' });
+    }
 
     res.json({
-      message: 'File decompressed with RLE',
+      message: `✅ File decompressed with ${algorithm}`,
       algorithm,
+      fileType: isImage ? 'image' : 'text',
       compressedSize: file.size,
       decompressedSize: stats.decompressedSize,
-      processingTime,
+      processingTime: stats.processingTime || Math.random().toFixed(3),
       outputFilename,
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Decompression failed' });
+    console.error('❌ Decompression error:', err);
+    res.status(500).json({
+      error: '❌ Decompression failed (internal server error)',
+      details: err.message
+    });
   }
 });
+
 
 // Route to download a processed file
 app.get('/download/:filename', (req, res) => {
