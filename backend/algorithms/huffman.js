@@ -9,11 +9,20 @@ class Node {
   }
 }
 
-// Build frequency map
+// Build frequency map for text
 function buildFrequencyMap(data) {
   const freq = {};
   for (let char of data) {
     freq[char] = (freq[char] || 0) + 1;
+  }
+  return freq;
+}
+
+// Build frequency map for binary
+function buildFrequencyMapRaw(data) {
+  const freq = {};
+  for (let byte of data) {
+    freq[byte] = (freq[byte] || 0) + 1;
   }
   return freq;
 }
@@ -40,14 +49,8 @@ function buildCodes(node, prefix = '', codeMap = {}) {
   buildCodes(node.right, prefix + '1', codeMap);
   return codeMap;
 }
-function buildFrequencyMapRaw(data) {
-  const freq = new Array(256).fill(0);
-  for (let byte of data) {
-    freq[byte]++;
-  }
-  return freq;
-}
 
+// Compress text using Huffman encoding
 function compressHuffman(inputPath, outputPath) {
   const input = fs.readFileSync(inputPath, 'utf-8');
   const freqMap = buildFrequencyMap(input);
@@ -59,29 +62,54 @@ function compressHuffman(inputPath, outputPath) {
     encoded += codeMap[char];
   }
 
-  // Save encoded data and codeMap to file
-  const result = JSON.stringify({ encoded, codeMap });
-  fs.writeFileSync(outputPath, result, 'utf-8');
+  const padding = (8 - (encoded.length % 8)) % 8;
+  encoded += '0'.repeat(padding);
+
+  const byteArray = [];
+  for (let i = 0; i < encoded.length; i += 8) {
+    byteArray.push(parseInt(encoded.slice(i, i + 8), 2));
+  }
+
+  const codeMapBuffer = Buffer.from(JSON.stringify({ codeMap, padding }), 'utf-8');
+  const encodedBuffer = Buffer.from(byteArray);
+
+  const codeMapLengthBuffer = Buffer.alloc(4);
+  codeMapLengthBuffer.writeUInt32BE(codeMapBuffer.length);
+
+  const finalBuffer = Buffer.concat([codeMapLengthBuffer, codeMapBuffer, encodedBuffer]);
+
+  fs.writeFileSync(outputPath, finalBuffer);
 
   return {
     originalSize: Buffer.byteLength(input),
-    compressedSize: Buffer.byteLength(result),
+    compressedSize: finalBuffer.length,
   };
 }
 
+// Decompress text using Huffman
 function decompressHuffman(inputPath, outputPath) {
-  const input = fs.readFileSync(inputPath, 'utf-8');
-  const { encoded, codeMap } = JSON.parse(input);
+  const buffer = fs.readFileSync(inputPath);
+  const codeMapLength = buffer.readUInt32BE(0);
+  const codeMapBuffer = buffer.slice(4, 4 + codeMapLength);
+  const dataBuffer = buffer.slice(4 + codeMapLength);
 
-  // Build reverse map
+  const { codeMap, padding } = JSON.parse(codeMapBuffer.toString('utf-8'));
+
   const reverseMap = Object.entries(codeMap).reduce((acc, [char, code]) => {
     acc[code] = char;
     return acc;
   }, {});
 
+  let bitString = '';
+  for (let byte of dataBuffer) {
+    bitString += byte.toString(2).padStart(8, '0');
+  }
+
+  bitString = bitString.slice(0, bitString.length - padding);
+
   let decoded = '';
   let current = '';
-  for (let bit of encoded) {
+  for (let bit of bitString) {
     current += bit;
     if (reverseMap[current]) {
       decoded += reverseMap[current];
@@ -96,8 +124,7 @@ function decompressHuffman(inputPath, outputPath) {
   };
 }
 
-// ====== BINARY COMPRESSION ====== //
-
+// Compress raw binary data (e.g. image)
 function compressHuffmanRaw(inputPath, outputPath) {
   const input = fs.readFileSync(inputPath);
   const freqMap = buildFrequencyMapRaw(input);
@@ -112,64 +139,63 @@ function compressHuffmanRaw(inputPath, outputPath) {
   const padding = (8 - (encoded.length % 8)) % 8;
   encoded += '0'.repeat(padding);
 
-  const bytes = [];
+  const byteArray = [];
   for (let i = 0; i < encoded.length; i += 8) {
-    bytes.push(parseInt(encoded.slice(i, i + 8), 2));
+    byteArray.push(parseInt(encoded.slice(i, i + 8), 2));
   }
 
-  // Single object containing all necessary info
-  const payload = {
-    codes: codeMap,
-    padding,
-    data: bytes,
-  };
+  const codeMapBuffer = Buffer.from(JSON.stringify({ codeMap, padding }), 'utf-8');
+  const encodedBuffer = Buffer.from(byteArray);
+  const codeMapLengthBuffer = Buffer.alloc(4);
+  codeMapLengthBuffer.writeUInt32BE(codeMapBuffer.length);
 
-  fs.writeFileSync(outputPath, JSON.stringify(payload)); // all in one file!
+  const finalBuffer = Buffer.concat([codeMapLengthBuffer, codeMapBuffer, encodedBuffer]);
+
+  fs.writeFileSync(outputPath, finalBuffer);
 
   return {
     originalSize: input.length,
-    compressedSize: Buffer.byteLength(JSON.stringify(payload)),
+    compressedSize: finalBuffer.length,
   };
 }
 
-
-
-
-// ====== BINARY DECOMPRESSION ====== //
-
+// Decompress binary data (e.g. image)
 function decompressHuffmanRaw(inputPath, outputPath) {
-  const input = JSON.parse(fs.readFileSync(inputPath, 'utf-8'));
-  const { codes, data, padding } = input;
+  const buffer = fs.readFileSync(inputPath);
+  const codeMapLength = buffer.readUInt32BE(0);
+  const codeMapBuffer = buffer.slice(4, 4 + codeMapLength);
+  const dataBuffer = buffer.slice(4 + codeMapLength);
 
-  let binary = '';
-  for (let byte of data) {
-    binary += byte.toString(2).padStart(8, '0');
-  }
+  const { codeMap, padding } = JSON.parse(codeMapBuffer.toString('utf-8'));
 
-  if (padding > 0) binary = binary.slice(0, -padding);
-
-  const reverseMap = Object.entries(codes).reduce((acc, [k, v]) => {
-    acc[v] = parseInt(k);
+  const reverseMap = Object.entries(codeMap).reduce((acc, [byte, code]) => {
+    acc[code] = parseInt(byte);
     return acc;
   }, {});
 
-  const decodedBytes = [];
+  let bitString = '';
+  for (let byte of dataBuffer) {
+    bitString += byte.toString(2).padStart(8, '0');
+  }
+
+  bitString = bitString.slice(0, bitString.length - padding);
+
+  const result = [];
   let current = '';
-  for (let bit of binary) {
+  for (let bit of bitString) {
     current += bit;
     if (reverseMap[current] !== undefined) {
-      decodedBytes.push(reverseMap[current]);
+      result.push(reverseMap[current]);
       current = '';
     }
   }
 
-  fs.writeFileSync(outputPath, Buffer.from(decodedBytes));
+  fs.writeFileSync(outputPath, Buffer.from(result));
+
   return {
-    decompressedSize: decodedBytes.length,
+    decompressedSize: result.length,
   };
 }
-
-
 
 module.exports = {
   compressHuffman,

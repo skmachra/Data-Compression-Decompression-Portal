@@ -61,7 +61,7 @@ app.post('/compress', upload.single('file'), async (req, res) => {
   const base = path.basename(file.originalname, ext);
   const inputPath = path.join(__dirname, 'uploads', file.filename);
   const outputPath = path.join(__dirname, 'uploads', `compressed-${base}${ext}`);
-
+  
   try {
     // Validate extension
     const isText = ['.txt', '.json', '.csv', '.xml', '.bin'].includes(ext);
@@ -81,6 +81,7 @@ app.post('/compress', upload.single('file'), async (req, res) => {
       compressedSize: 0,
     };
 
+    const startTime = Date.now();
     // 🔹 Handle text files
     if (isText) {
       if (algorithm === 'rle') compressRLE(inputPath, outputPath);
@@ -96,7 +97,7 @@ app.post('/compress', upload.single('file'), async (req, res) => {
       else if (algorithm === 'lz77') compressLZ77Raw(inputPath, outputPath);
       else return res.status(400).json({ error: '❌ Unsupported algorithm for image file' });
     }
-
+    const processingTime = ((Date.now() - startTime) / 1000).toFixed(3);
     // Ensure output file is created
     if (!fs.existsSync(outputPath)) {
       return res.status(500).json({ error: '❌ Compression failed: No output file generated' });
@@ -110,7 +111,7 @@ app.post('/compress', upload.single('file'), async (req, res) => {
       originalSize: stats.originalSize,
       compressedSize: stats.compressedSize,
       compressionRatio: (stats.compressedSize / stats.originalSize).toFixed(2),
-      processingTime: Math.random().toFixed(3),
+      processingTime: processingTime,
       outputFilename: `compressed-${base}${ext}`,
     });
 
@@ -147,6 +148,7 @@ app.post('/decompress', upload.single('file'), (req, res) => {
       return res.status(400).json({ error: '❌ Unsupported file type for decompression' });
     }
 
+    const startTime = Date.now();
     // Decompression logic
     if (algorithm === 'rle') {
       stats = isImage ? decompressRLERaw(inputPath, outputPath) 
@@ -163,7 +165,7 @@ app.post('/decompress', upload.single('file'), (req, res) => {
     else {
       return res.status(400).json({ error: `❌ Unsupported algorithm '${algorithm}'` });
     }
-
+    const processingTime = ((Date.now() - startTime) / 1000).toFixed(3);
     // If no decompressedSize returned, treat as fail
     if (!stats || !stats.decompressedSize) {
       return res.status(500).json({ error: '❌ Decompression failed or invalid file format' });
@@ -175,7 +177,8 @@ app.post('/decompress', upload.single('file'), (req, res) => {
       fileType: isImage ? 'image' : 'text',
       compressedSize: file.size,
       decompressedSize: stats.decompressedSize,
-      processingTime: stats.processingTime || Math.random().toFixed(3),
+      decompressionRatio: (file.size / stats.decompressedSize).toFixed(2),
+      processingTime: processingTime,
       outputFilename,
     });
   } catch (err) {
