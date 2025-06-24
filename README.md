@@ -65,8 +65,10 @@ npm install
 npm run dev
 ```
 
+If running backend locally, update the API URL in the frontend code from the production URL to http://localhost:5000
+
 ###  📌 Usage
-Upload any supported file (.txt, .jpg/.png, .mp4).
+Upload any supported file (.txt, .jpg/.png,).
 
 Select a compression algorithm.
 
@@ -81,5 +83,3 @@ Download the processed file and view compression stats.
 | Huffman   | `.txt`, `.jpg` | Lossless                  |
 | RLE       | `.txt`, `.bmp` | Best for repeating data   |
 | LZ77      | `.txt`         | Sliding window compression|
-| Sharp     | `.png`, `.jpeg`| Image quality reduction   |
-| FFmpeg    | `.mp4`         | Video bitrate reduction   |
